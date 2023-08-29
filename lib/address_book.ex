@@ -1,7 +1,6 @@
 defmodule AddressBook.Router do
   use Plug.Router
-
-  alias AddressBook.Contacts
+  alias AddressBook.Controller.Contact
 
   # define middleware
   plug(:match)
@@ -15,42 +14,100 @@ defmodule AddressBook.Router do
 
   # get all contacts
   get "/contacts" do
-    contacts = Contacts.list_contacts()
-    send_resp(conn, 200, Poison.encode!(%{resp_code: '200', resp_msg: contacts}))
-    case  Contacts.list_contacts() do
+    case Contact.list_contacts() do
       {:ok, result} ->
         conn
         |> put_resp_header("content-type", "application/json")
-        |> send_resp(200, Poison.encode!(Map.put(Constant.success(), data: result)))
+        |> send_resp(200, Poison.encode!(%{response_code: 200, data: result}))
+
+      {:error, reason} ->
+        conn
+        |> put_resp_header("content-type", "application/json")
+        |> send_resp(500, Poison.encode!(%{resp_code: 500, data: reason}))
     end
   end
 
   # get specific contact
   get "/contacts/:id" do
     id = conn.params["id"]
-    contact = Contacts.get_contact(id)
-    send_resp(conn, 200, contact)
-  end
+    case Contact.get_contact(id) do
+      {:ok, contact} ->
+        send_resp(conn, 200, Poison.encode!(%{resp_code: 200, data: contact}))
 
-  # create a new contact‰
-  post "/contacts" do
-    contact_params = conn.params["contact"]
-    contact = Contacts.create_contact(contact_params)
-    send_resp(conn, 201, contact)
-  end
-
-  # update an existing contact
-  put "/contacts/:id" do
-    id = conn.params["id"]
-    contact_params = conn.params["contact"]
-    contact = Contacts.update_contact(id, contact_params)
-    send_resp(conn, 200, contact)
+      {:error, reason} ->
+        send_resp(conn, 404, Poison.encode!(%{resp_code: 500, data: reason}))
+    end
   end
 
   # delete a contact
   delete "contacts/:id" do
     id = conn.params["id"]
-  Contacts.delete_contact(id)
+    Contact.delete_contact(id)
+    send_resp(conn, 204, "")
+  end
+
+  # get specific contact
+  get "/contacts/:id" do
+    id = conn.params["id"]
+
+
+    case Contact.get_contact(id) do
+      contact ->
+        send_resp(conn, 200, Poison.encode!(%{resp_code: '200', resp_msg: contact}))
+      nil ->
+        send_resp(conn, 404, Poison.encode!(%{resp_code: '404', resp_msg: "Contact with id #{id} not found"}))
+    end
+  end
+
+  # create a new contact
+  post "/contacts" do
+    {:ok, body, conn} = read_body(conn)
+
+    case Poison.decode(body) do
+      {:ok, parsed} ->
+      case Contact.create_contact(parsed) do
+        {:ok, result} ->
+          conn
+          |> put_status(201)
+          |> put_resp_header("content-type", "application/json")
+          |> send_resp(201, Poison.encode!(result))
+
+        {:error, reason} ->
+          conn
+          |> put_status(400)
+          |> put_resp_header("content-type", "application/json")
+          |> send_resp(400, Poison.encode!(reason))
+      end
+      {:error, reason} ->
+        conn
+        |> put_status(400)
+        |> put_resp_header("content-type", "application/json")
+        |> send_resp(400, Poison.encode!(reason))
+    end
+  end
+
+  # update an existing contact
+ put "/contacts/:id" do
+    contact_id = conn.params["id"]
+    {:ok, body, conn} = read_body(conn)
+    {:ok, details} = Poison.decode(body)
+
+    case Contact.update_contact(contact_id, details) do
+      {:ok, contact} ->
+        conn
+        |> put_resp_header("content-type", "application/json")
+        |> send_resp(200, Poison.encode!(%{resp_code: "00", contact: contact}))
+      {:notfound} ->
+        conn
+        |> put_resp_header("content-type", "application/json")
+        |> send_resp(404, Poison.encode!(%{resp_code: "01", message: "Contact does not exist"}))
+    end
+  end
+
+  # delete a contact
+  delete "contacts/:id" do
+    id = conn.params["id"]
+    Contact.delete_contact(id)
     send_resp(conn, 204, "")
   end
 end
